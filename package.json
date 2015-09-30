@@ -1,0 +1,26 @@
+{
+  "name": "sonarvio-converter",
+  "description": "wrapper for an emscripted version of ffmpeg",
+  "version": "0.4.0",
+  "author": "Stefan Dühring | Autarc <autarc@gmail.com>",
+  "bugs": {
+    "url": "https://github.com/Sonarvio/sonarvio-converter/issues"
+  },
+  "dependencies": {
+    "babel-runtime": "^5.8.25"
+  },
+  "devDependencies": {
+    "babel-loader": "^5.3.2",
+    "webpack": "^1.12.2"
+  },
+  "homepage": "https://github.com/Sonarvio/sonarvio-converter",
+  "license": "MIT",
+  "main": "dist/sonarvio-converter.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sonarvio/sonarvio-converter.git"
+  },
+  "scripts": {
+    "check": "npm outdated -depth 0"
+  }
+}
