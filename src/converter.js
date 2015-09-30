@@ -125,11 +125,12 @@ export default class Converter {
 	command (type = Object.keys(this.TYPES)[0], params = '-formats') {
 		return new Promise((resolve, reject) => {
 			this.pending[type] = this.pending[type].then(() => {
-				this._receive(type, true).then(resolve).catch(reject)
+				const done = this._receive(type, true).then(resolve).catch(reject)
 				this._getWorker(type).postMessage({
 					type: 'run',
 					arguments: params.split(' ')
 				})
+				return done
 			})
 		})
 	}
@@ -146,7 +147,7 @@ export default class Converter {
 			const { format = extname(targetName).substr(1), codec = 'copy' } = options
 			const type = extname(source.name).substr(1)
 			this.pending[type] = this.pending[type].then(() => {
-				this._receive(type).then(({ MEMFS: [{ data }] }) => {
+				const done = this._receive(type).then(({ MEMFS: [{ data }] }) => {
 					return resolve({
 						name: targetName,
 						data
@@ -167,6 +168,7 @@ export default class Converter {
 					arguments: `-i ${source.name} -vn -f ${format} -acodec ${codec} ${targetName}`
 										 .split(' ')
 				})
+				return done
 			})
 		})
 	}
@@ -181,7 +183,7 @@ export default class Converter {
 		return new Promise((resolve, reject) => {
 			const type = extname(source.name).substr(1)
 			this.pending[type] = this.pending[type].then(() => {
-				this._receive(type).then(({ MEMFS: [{ data }] }) => {
+				const done = this._receive(type).then(({ MEMFS: [{ data }] }) => {
 					return resolve({
 						name: targetName,
 						data
@@ -202,6 +204,7 @@ export default class Converter {
 					arguments: `-i ${source.name} ${targetName}`
 										 .split(' ')
 				})
+				return done
 			})
 		})
 	}
