@@ -3,6 +3,10 @@
  * ==============
  *
  * Handling transformations and modifications of media files.
+ *
+ * Links:
+ * - http://stackoverflow.com/questions/3377300/what-are-all-codecs-supported-by-ffmpeg
+ * - http://superuser.com/questions/300897/what-is-a-codec-e-g-divx-and-how-does-it-differ-from-a-file-format-e-g-mp/300997#300997
  */
 
 import { extname } from 'path'
@@ -42,8 +46,8 @@ export default class LocalConverter {
 	}
 
 	/**
-	 * @param {[type]} format [description]
-	 * @param {[type]} deep 	[description]
+	 * @param {[type]} format -
+	 * @param {[type]} deep 	-
 	 */
 	_reset (format, deep = false) {
 		const worker = this.workers[format]
@@ -56,11 +60,10 @@ export default class LocalConverter {
 	}
 
 	/**
-	 * @param  {[type]} format  [description]
-	 * @param  {[type]} debug 	[description]
-	 * @return {[type]}       	[description]
+	 * @param  {[type]} format -
+	 * @param  {[type]} debug  -
 	 */
-	_receive (format, debug) {
+	_receive (format, debug = false) {
 		return new Promise((resolve, reject) => {
 			const worker = this._getWorker(format)
 			const stdout = []
@@ -73,14 +76,10 @@ export default class LocalConverter {
 				const msg = e.data || {}
 				switch (msg.type) {
 					case 'ready':
-						// if (debug) {
-						// 	console.log('ready', msg)
-						// }
+						if (debug) console.log('ready', msg)
 						break
 					case 'run':
-						// if (debug) {
-						// 	console.log('run', msg)
-						// }
+						if (debug) console.log('run', msg)
 						break
 					case 'stdout':
 						stdout.push(msg.data)
@@ -90,69 +89,121 @@ export default class LocalConverter {
 						stderr.push(msg.data)
 						break
 					case 'done':
-						// if (debug) {
-						// 	console.log('done', msg)
-						// }
+						if (debug) console.log('done', msg)
 						const [out, err] = parseLines(stdout, stderr)
-						if (debug) {
-							console.log(out)
-						}
-						return resolve(msg.data)
-						break;
+						return resolve({ data: msg.data, out, err	})
 					case 'error':
 						this._reset(format, true)
 						return reject(new Error(msg.data))
 					case 'exit':
 					default:
-						// if (debug) {
-						// 	console.log('exit', msg)
-						// }
+						if (debug) console.log('exit', msg)
 						this._reset(format)
 						if (msg.data !== 0) {
 							return reject(new Error(`Process Exit: ${msg.data}`))
 						}
-						break
 				}
 			}
 		})
 	}
 
 	/**
-	 * [command description]
-	 * @param  {[type]} params
+	 * Basic execution of a defined task
+	 *
+	 * @param  {string}	format -
+	 * @param  {string}	params -
+	 */
+	exec (format = Object.keys(this.FORMATS)[0], params = '') {
+		return new Promise((resolve, reject) => {
+			this.pending[format] = this.pending[format].then(() => {
+				const task = this._receive(format).then(resolve).catch(reject)
+				this._getWorker(format).postMessage({
+					type: 'run',
+					arguments: params.split(' ').filter((arg) => arg)
+				})
+				return task
+			})
+		})
+	}
+
+	/**
+	 * Show information about the supported en-/decoder
+	 *
+	 * TODO:
+	 * - parse information from the lists
+	 *
+	 * @param  {[type]} format [description]
 	 * @return {[type]}        [description]
 	 */
-	command (format = Object.keys(this.FORMATS)[0], params = '-formats') {
-		return new Promise((resolve, reject) => {
-			this.pending[format] = this.pending[format].then(() => {
-				const done = this._receive(format, true)
-													.then(() =>	resolve(new Track({ name: `source.${format}` })))
-													.catch(reject)
-				this._getWorker(format).postMessage({
-					type: 'run',
-					arguments: params.split(' ')
-				})
-				return done
-			})
+	info (format) {
+		return Promise.all([
+			this.exec(format, '-formats'),
+			this.exec(format, '-codecs')
+		]).then(([ formats, codecs ]) => {
+			const formatsDelimeter = 'File formats:'
+			const formatsList = formats.out.substr(
+														formats.out.indexOf(formatsDelimeter) + formatsDelimeter.length + 1
+													).split('\n')
+
+			const codecsDelimeter = 'Codecs:'
+			const codecsList = codecs.out.substr(
+														codecs.out.indexOf(codecsDelimeter) + codecsDelimeter.length + 1
+													).split('\n')
+
+			return {
+				formats: formatsList,
+				codecs: codecsList
+			}
 		})
 	}
 
 	/**
-	 * [decode description]
-	 * @param  {[type]} source     [description]
-	 * @param  {[type]} targetName [description]
-	 * @param  {[type]} options		 [description]
-	 * @return {[type]}            [description]
+	 * De-/Encode files
+	 *
+	 * @param  {[type]} source [description]
+	 * @param  {[type]} target [description]
+	 * @return {[type]}        [description]
 	 */
-	decode (source, targetName, options = {}) {
+	transform (source, target) {
 		return new Promise((resolve, reject) => {
-			const { format = extname(targetName).substr(1), codec = 'copy' } = options
-			const originalFormat = extname(source.name).substr(1)
-			this.pending[originalFormat] = this.pending[originalFormat].then(() => {
-				const done = this._receive(originalFormat).then(({ MEMFS: [{ data }] }) => {
-					return resolve(new Track({ name: targetName, data	}))
+
+			const sourceFormat = source.format || extname(source.name).substr(1)
+			const targetFormat = target.format || extname(target.name).substr(1)
+			const codec = target.codec || { 'wav': 'pcm_s16le' }[targetFormat] || 'copy'
+
+			const options = []
+
+			// time based re-encoding
+			if (target.start || target.end || target.duration) {
+				const position = target.start || target.duration && (target.end - target.duration)
+				if (position) { // targetStart
+					options.push(`-ss ${position}`)
+				}
+				const duration = target.end || target.duration && (target.start + target.duration)
+				if (duration) { // targetEnd
+					options.push(`-t ${duration}`)
+				}
+			}
+
+			if (target.normalize) {
+				// TODO:
+				// - implement peak and RMS normalization
+				// 		http://superuser.com/questions/323119/how-can-i-normalize-audio-using-ffmpeg
+				// 		https://www.quora.com/How-do-I-normalize-or-equalize-the-audio-on-FFmpeg
+			}
+
+			if (Array.isArray(target.modifiers)) {
+				options.push.apply(options, modifiers)
+			}
+
+			const params = `-i ${source.name} -vn -acodec ${codec} ${options.join(' ')} ${target.name}`
+
+			this.pending[sourceFormat] = this.pending[sourceFormat].then(() => {
+				const task = this._receive(sourceFormat).then(({ data }) => {
+					const descriptor = data.MEMFS[0] // ~ name, data
+					return resolve(new Track(descriptor))
 				}).catch(reject)
-				this._getWorker(originalFormat).postMessage({
+				this._getWorker(sourceFormat).postMessage({
 					type: 'run',
 					// TODO:
 					// - allow shared usage of existing/passed entries
@@ -164,43 +215,9 @@ export default class LocalConverter {
 						mountpoint: WORKERFS_DIRECTORY
 					}],
 					MEMFS: [source],
-					arguments: `-i ${source.name} -vn -f ${format} -acodec ${codec} ${targetName}`
-										 .split(' ')
+					arguments: params.split(' ').filter((arg) => arg)
 				})
-				return done
-			})
-		})
-	}
-
-	/**
-	 * [encode description]
-	 * @param  {[type]} source     [description]
-	 * @param  {[type]} targetName [description]
-	 * @return {[type]}            [description]
-	 */
-	encode (source, targetName) {
-		return new Promise((resolve, reject) => {
-			const format = extname(source.name).substr(1)
-			this.pending[format] = this.pending[format].then(() => {
-				const done = this._receive(format).then(({ MEMFS: [{ data }] }) => {
-					return resolve(new Track({ name: targetName, data	}))
-				}).catch(reject)
-				this._getWorker(format).postMessage({
-					type: 'run',
-					// TODO:
-					// - allow shared usage of existing/passed entries
-					mounts: [{
-						type: 'WORKERFS',
-						opts: {
-							blobs: [source]
-						},
-						mountpoint: WORKERFS_DIRECTORY
-					}],
-					MEMFS: [source],
-					arguments: `-i ${source.name} ${targetName}`
-										 .split(' ')
-				})
-				return done
+				return task
 			})
 		})
 	}

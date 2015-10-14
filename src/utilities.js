@@ -2,7 +2,7 @@
  * Utilities
  * =========
  *
- * Helpers
+ * Helper functions
  */
 
 

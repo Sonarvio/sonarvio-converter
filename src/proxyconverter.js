@@ -2,8 +2,10 @@
  * ProxyConverter
  * ==============
  *
- * Allows start the converter in a worker - although its available at
- * at a different (or none HTTP/S) origin.
+ * Allows to spawn a converter in a worker even if through a different origin.
+ *
+ * TODO:
+ * - add warning if an invalid 'proxy.html' got referenced
  */
 
 import { extname } from 'path'
@@ -14,7 +16,7 @@ import Track from './track'
 
 
 /**
- * 
+ *
  */
 export default class ProxyConverter {
 
@@ -51,9 +53,9 @@ export default class ProxyConverter {
       if (e.origin !== link.origin) {
         return // check source
       }
-      const { id, error, track } = e.data
+      const { id, error, data, track } = e.data
       if (!error) {
-        this.current[id].resolve(new Track(track))
+        this.current[id].resolve(data || track && new Track(track))
       } else {
         this.current[id].reject(new Error(error))
       }
@@ -62,11 +64,10 @@ export default class ProxyConverter {
   }
 
   /**
-   * [_send description]
    * Solve/hanlded by the window event listener
-   * @param  {[type]} type  [description]
-   * @param  {[type]} args  [description]
-   * @return {[type]}       [description]
+   *
+   * @param  {[type]} type -
+   * @param  {[type]} args -
    */
   _send (type, args) {
     return new Promise((resolve, reject) => {
@@ -85,33 +86,31 @@ export default class ProxyConverter {
 
   /**
    * [command description]
-   * @param  {[type]} format [description]
-   * @return {[type]}        [description]
+   *
+   * @param  {[type]} format -
    */
-  command (format = this.FORMATS[0]) {
+  exec (format) {
     const args = Array.prototype.slice.call(arguments, 1)
-    return this.pending[format] = this.pending[format].then(() => this._send('command', args))
+    return this.pending[format] = this.pending[format].then(() => this._send('exec', args))
+  }
+
+  /**
+   * [command description]
+   *
+   * @param  {[type]} format -
+   */
+  info (format) {
+    return this.pending[format] = this.pending[format].then(() => this._send('info', [format]))
   }
 
   /**
    * [decode description]
-   * @param  {[type]} source [description]
-   * @return {[type]}        [description]
+   *
+   * @param  {[type]} source -
    */
-  decode (source) {
+  transform (source) {
     const args = [...arguments]
-    const format = extname(source.name).substr(1)
-    return this.pending[format] = this.pending[format].then(() => this._send('decode', args))
-  }
-
-  /**
-   * [encode description]
-   * @param  {[type]} source [description]
-   * @return {[type]}        [description]
-   */
-  encode (source) {
-    const args = [...arguments]
-    const format = extname(source.name).substr(1)
-    return this.pending[format] = this.pending[format].then(() => this._send('encode', args))
+    const format = source.format || extname(source.name).substr(1)
+    return this.pending[format] = this.pending[format].then(() => this._send('transform', args))
   }
 }

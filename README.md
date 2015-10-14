@@ -3,14 +3,14 @@
 Sonarvio Converter
 ==================
 
-A wrapper for an [emscripted version of ffmpeg](https://github.com/Kagami/ffmpeg.js) to extract the audio tracks from media containers.
+A wrapper for an [emscripted version of ffmpeg](https://github.com/Kagami/ffmpeg.js) to extract the audio tracks from media containers. It includes custom builds for 'wav'.
 
 `npm install --save sonarvio-converter`
 
 
 ## Features
 
-- minimal API surface for '.command', '.decode' and '.encode'
+- minimal API surface for '.exec', '.info' and '.transform'
 - automatic queue system for scheduling re-used workers
 - transparent migration for usage with proxy for CORS handling
 
@@ -28,11 +28,17 @@ var converter = new Converter({
 		webm: '<FILE_TO_WORKER_SCRIPT>' // e.g. require(file!ffmpeg.js/ffmpeg-worker-webm)
 	}
 })
-converter.command('webm', '-version').then(function(){
+
+converter.exec('webm', '-version').then(function(){
 	console.log('shown infos');
 })
 
-converter.decode({ name: 'example.webm', data: .... }, 'result.ogg').then(function (track) {
+converter.transform({
+	name: 'example.webm',
+	data: ....
+}, {
+	name: 'result.opus'
+}).then(function (track) {
 	console.log(track);
 })
 
@@ -42,7 +48,7 @@ var converter = new Converter({
 	proxy: 'http://sonarvio.com/__/proxy.html'
 })
 
-converter.command('webm', '-version').then(function(){
-	console.log('show', infos);
+converter.info('webm').then(function (info) {
+	console.log(info);
 })
 ```
