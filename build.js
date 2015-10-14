@@ -18,6 +18,7 @@ var env = {
   SOURCE_DIRECTORY: path.resolve(__dirname, 'src'),
   DIST_DIRECTORY: path.resolve(__dirname, path.dirname(manifest.main)),
   FILE_NAME: path.basename(manifest.main, path.extname(manifest.main)),
+  isProduction: (process.env.NODE_ENV === 'production') || process.argv.length > 2,
   EXPORT_NAME: 'Converter'
 }
 
@@ -62,7 +63,12 @@ var config = {
   }
 }
 
-webpack(config).watch(100, notify)
+if (!env.isProduction) {
+  webpack(config).watch(100, notify)
+} else {
+  webpack(config).run(notify)
+}
+
 
 // defer all beween production and not ! ()
 // devtool: 'source-map',  // -> dont use eval in production !
@@ -110,7 +116,11 @@ var proxyConfig = {
   }
 }
 
-webpack(proxyConfig).watch(100, notify)
+if (!env.isProduction) {
+  webpack(proxyConfig).watch(100, notify)
+} else {
+  webpack(proxyConfig).run(notify)
+}
 
 
 function notify (error, stats) {
